@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -41,6 +42,36 @@ async def create_user(
 async def update_user(db: AsyncSession, user: User, updates: dict) -> User:
     for field, value in updates.items():
         setattr(user, field, value)
+    db.add(user)
+    await db.commit()
+    await db.refresh(user)
+    return user
+
+
+async def set_verification_token(
+    db: AsyncSession, user: User, token: str, expires: datetime
+) -> User:
+    user.verification_token = token
+    user.verification_token_expires = expires
+    db.add(user)
+    await db.commit()
+    await db.refresh(user)
+    return user
+
+
+async def verify_user_email(db: AsyncSession, token: str) -> Optional[User]:
+    result = await db.execute(select(User).filter(User.verification_token == token))
+    user = result.scalars().first()
+    if not user:
+        return None
+    if (
+        not user.verification_token_expires
+        or user.verification_token_expires < datetime.utcnow()
+    ):
+        return None
+    user.email_verified = True
+    user.verification_token = None
+    user.verification_token_expires = None
     db.add(user)
     await db.commit()
     await db.refresh(user)

@@ -26,6 +26,7 @@ class UserOut(BaseModel):
     username: str
     email: Optional[EmailStr] = None
     display_name: Optional[str] = None
+    email_verified: bool = False
 
     model_config = {"from_attributes": True}
 
