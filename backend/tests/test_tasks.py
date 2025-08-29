@@ -1,15 +1,9 @@
-import os
-
 import pytest
 import pytest_asyncio
-from dotenv import load_dotenv
-
-load_dotenv()
 
 
 @pytest_asyncio.fixture
 async def auth_headers(async_client):
-    API_KEY = os.getenv("TSKZ_HTTP_API_KEY", "sample_key")
     username = "john"
     password = "pass"
 
@@ -17,7 +11,12 @@ async def auth_headers(async_client):
     token_res = await async_client.post("/token", data={"username": username, "password": password})
     token = token_res.json()["access_token"]
 
-    return {"Authorization": f"Bearer {token}", "X-API-Key": API_KEY}
+    key_res = await async_client.post(
+        "/apikeys", headers={"Authorization": f"Bearer {token}"}
+    )
+    api_key = key_res.json()["key"]
+
+    return {"Authorization": f"Bearer {token}", "X-API-Key": api_key}
 
 
 @pytest_asyncio.fixture
@@ -39,15 +38,28 @@ async def test_create_task(async_client, auth_headers):
 
 @pytest.mark.asyncio
 async def test_list_tasks(async_client, auth_headers):
-    # Create 2 tasks
-    for i in range(2):
+    # Create tasks with varying titles and statuses
+    for i in range(6):
+        status = "completed" if i % 2 == 0 else "pending"
         await async_client.post(
-            "/tasks/", json={"title": f"Task {i}", "description": "Sample", "status": "pending"}, headers=auth_headers
+            "/tasks/",
+            json={"title": f"Task {i}", "description": "Sample", "status": status},
+            headers=auth_headers,
         )
 
-    res = await async_client.get("/tasks/", headers=auth_headers)
+    # Filter by status
+    res = await async_client.get("/tasks/?status=completed", headers=auth_headers)
     assert res.status_code == 200
-    assert len(res.json()) >= 2
+    assert all(t["status"] == "completed" for t in res.json())
+
+    # Search by title
+    res = await async_client.get("/tasks/?q=Task 1", headers=auth_headers)
+    assert len(res.json()) == 1
+    assert res.json()[0]["title"] == "Task 1"
+
+    # Pagination
+    res = await async_client.get("/tasks/?limit=2&page=2&sort=asc", headers=auth_headers)
+    assert len(res.json()) == 2
 
 
 @pytest.mark.asyncio
@@ -85,3 +97,26 @@ async def test_delete_task(async_client, auth_headers, created_task):
     # Ensure task is gone
     res = await async_client.get(f"/tasks/{task_id}", headers=auth_headers)
     assert res.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_bulk_create_and_update(async_client, auth_headers):
+    payload = {
+        "create": [
+            {"title": "Bulk 1", "description": "", "status": "pending"},
+            {"title": "Bulk 2", "description": "", "status": "pending"},
+        ]
+    }
+    res = await async_client.post("/tasks/bulk", json=payload, headers=auth_headers)
+    assert res.status_code == 200
+    created = res.json()["created"]
+    assert len(created) == 2
+
+    update_payload = {
+        "update_status": [{"id": created[0]["id"], "status": "completed"}]
+    }
+    res = await async_client.post("/tasks/bulk", json=update_payload, headers=auth_headers)
+    assert res.status_code == 200
+    updated = res.json()["updated"]
+    assert len(updated) == 1
+    assert updated[0]["status"] == "completed"

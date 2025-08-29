@@ -1,9 +1,4 @@
-import os
-
-import dotenv
 import pytest
-
-dotenv.load_dotenv()
 
 
 @pytest.mark.asyncio
@@ -16,7 +11,11 @@ async def test_full_flow(async_client):
     res = await async_client.post("/token", data={"username": "alice", "password": "alicepw"})
     assert res.status_code == 200
     token = res.json()["access_token"]
-    headers = {"Authorization": f"Bearer {token}", "X-API-Key": "123456"}
+    key_res = await async_client.post(
+        "/apikeys", headers={"Authorization": f"Bearer {token}"}
+    )
+    api_key = key_res.json()["key"]
+    headers = {"Authorization": f"Bearer {token}", "X-API-Key": api_key}
 
     # 3. Create multiple tasks
     for i in range(3):
@@ -48,13 +47,15 @@ async def test_full_flow(async_client):
 
 @pytest.mark.asyncio
 async def test_task_crud_lifecycle(async_client):
-    API_KEY = os.getenv("TSKZ_HTTP_API_KEY", "sample_key")
-
     # Setup user
     await async_client.post("/signup", json={"username": "john", "password": "pass"})
     token_res = await async_client.post("/token", data={"username": "john", "password": "pass"})
     token = token_res.json()["access_token"]
-    headers = {"Authorization": f"Bearer {token}", "X-API-Key": API_KEY}
+    key_res = await async_client.post(
+        "/apikeys", headers={"Authorization": f"Bearer {token}"}
+    )
+    api_key = key_res.json()["key"]
+    headers = {"Authorization": f"Bearer {token}", "X-API-Key": api_key}
 
     # Create task
     task_data = {"title": "Task 1", "description": "Test it", "status": "pending"}

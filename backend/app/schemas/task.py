@@ -63,3 +63,17 @@ class TaskOut(TaskBase):
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class TaskStatusBulkUpdate(TaskStatusUpdate):
+    id: int
+
+
+class TaskBulkRequest(BaseModel):
+    create: list[TaskCreate] = []
+    update_status: list[TaskStatusBulkUpdate] = []
+
+
+class TaskBulkResponse(BaseModel):
+    created: list[TaskOut] = []
+    updated: list[TaskOut] = []

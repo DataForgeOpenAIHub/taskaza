@@ -1,10 +1,19 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import get_current_user, get_db, verify_api_key
 from app.crud import task as crud
 from app.models.user import User
-from app.schemas.task import TaskCreate, TaskOut, TaskStatusUpdate, TaskUpdate
+from app.schemas.task import (
+    TaskBulkRequest,
+    TaskBulkResponse,
+    TaskCreate,
+    TaskOut,
+    TaskStatus,
+    TaskStatusBulkUpdate,
+    TaskStatusUpdate,
+    TaskUpdate,
+)
 
 router = APIRouter(prefix="/tasks", tags=["Tasks"], dependencies=[Depends(verify_api_key)])
 
@@ -20,10 +29,23 @@ async def create_task(
 
 @router.get("/", response_model=list[TaskOut], status_code=status.HTTP_200_OK)
 async def list_tasks(
+    status: TaskStatus | None = None,
+    q: str | None = None,
+    page: int = Query(1, ge=1),
+    limit: int = Query(20, ge=1, le=100),
+    sort: str = Query("desc", pattern="^(asc|desc)$"),
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    return await crud.get_tasks_for_user(db, user.id)
+    return await crud.get_tasks_for_user(
+        db,
+        user.id,
+        status=status,
+        q=q,
+        page=page,
+        limit=limit,
+        sort=sort,
+    )
 
 
 @router.get("/{task_id}", response_model=TaskOut, status_code=status.HTTP_200_OK)
@@ -74,3 +96,23 @@ async def delete_task(
     if not task:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
     await crud.delete_task(db, task)
+
+
+@router.post("/bulk", response_model=TaskBulkResponse, status_code=status.HTTP_200_OK)
+async def bulk_tasks(
+    payload: TaskBulkRequest,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    created = []
+    if payload.create:
+        created = await crud.create_tasks_bulk(
+            db, user.id, [task.model_dump() for task in payload.create]
+        )
+
+    updated = []
+    if payload.update_status:
+        updates = [(u.id, u.status) for u in payload.update_status]
+        updated = await crud.update_tasks_status_bulk(db, user.id, updates)
+
+    return TaskBulkResponse(created=created, updated=updated)
