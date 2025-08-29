@@ -1,15 +1,9 @@
-import os
-
 import pytest
 import pytest_asyncio
-from dotenv import load_dotenv
-
-load_dotenv()
 
 
 @pytest_asyncio.fixture
 async def auth_headers(async_client):
-    API_KEY = os.getenv("TSKZ_HTTP_API_KEY", "sample_key")
     username = "john"
     password = "pass"
 
@@ -17,7 +11,12 @@ async def auth_headers(async_client):
     token_res = await async_client.post("/token", data={"username": username, "password": password})
     token = token_res.json()["access_token"]
 
-    return {"Authorization": f"Bearer {token}", "X-API-Key": API_KEY}
+    key_res = await async_client.post(
+        "/apikeys", headers={"Authorization": f"Bearer {token}"}
+    )
+    api_key = key_res.json()["key"]
+
+    return {"Authorization": f"Bearer {token}", "X-API-Key": api_key}
 
 
 @pytest_asyncio.fixture

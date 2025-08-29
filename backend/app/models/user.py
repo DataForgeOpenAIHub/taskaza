@@ -16,3 +16,6 @@ class User(Base):
     verification_token_expires = Column(DateTime, nullable=True)
 
     tasks = relationship("Task", back_populates="user", cascade="all, delete-orphan")
+    api_keys = relationship(
+        "APIKey", back_populates="user", cascade="all, delete-orphan"
+    )
